@@ -556,14 +556,24 @@
   var lock = LockService.getScriptLock();
   lock.waitLock(30000);
   try {
-    var sheet = SpreadsheetApp.getActiveSpreadsheet().getActiveSheet();
+    var ss = SpreadsheetApp.getActiveSpreadsheet();
     var payload = JSON.parse(e.postData.contents);
+
+    // 送信データ(formType)から該当するタブ名を取得
+    var formType = payload.formType || "業務改善意見書";
+    var sheet = ss.getSheetByName(formType);
+
+    // タブが存在しない場合は自動で新規作成
+    if (!sheet) {
+      sheet = ss.insertSheet(formType);
+    }
 
     var lastCol = Math.max(sheet.getLastColumn(), 1);
     var headers = sheet.getRange(1, 1, 1, lastCol).getValues()[0];
 
+    // 1行目が空の場合は初期ヘッダーをセット
     if (headers.length === 1 && headers[0] === "") {
-      headers = ["送信日時", "所属医院", "対象者"];
+      headers = ["送信日時", "所属医院", "氏名"];
       sheet.getRange(1, 1, 1, 3).setValues([headers]);
       lastCol = 3;
     }
@@ -573,13 +583,14 @@
     var rowData = {};
     rowData["送信日時"] = payload.timestamp;
     rowData["所属医院"] = payload.clinic;
-    rowData["対象者"] = payload.name;
+    rowData["氏名"] = payload.name;
 
     var responses = payload.data;
     for (var question in responses) {
       var qTrim = question.trim();
       var headerIndex = headers.indexOf(qTrim);
-      
+
+      // 新規質問項目があれば列を自動追加
       if (headerIndex === -1) {
         sheet.getRange(1, lastCol + 1).setValue(qTrim);
         headers.push(qTrim);
@@ -597,7 +608,7 @@
 
     sheet.appendRow(newRow);
 
-    return ContentService.createTextOutput(JSON.stringify({ "result": "success" }))
+    return ContentService.createTextOutput(JSON.stringify({ "result": "success", "tab": formType }))
       .setMimeType(ContentService.MimeType.JSON);
 
   } catch (err) {
